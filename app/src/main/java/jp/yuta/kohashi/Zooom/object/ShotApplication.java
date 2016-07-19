@@ -5,8 +5,9 @@ import android.content.Intent;
 import android.media.projection.MediaProjectionManager;
 
 /**
- * Created by Dylan_Wang on 2015/7/28.
+ * Created by Yuta on 2016/07/20.
  */
+
 public class ShotApplication extends Application {
     private int result;
     private Intent intent;

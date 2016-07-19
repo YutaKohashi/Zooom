@@ -1,6 +1,5 @@
 package jp.yuta.kohashi.Zooom.service;
 
-import android.annotation.TargetApi;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -17,7 +16,6 @@ import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
 import android.util.DisplayMetrics;
@@ -27,8 +25,10 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageButton;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.SeekBar;
 
 import com.anprosit.android.promise.Callback;
 import com.anprosit.android.promise.NextTask;
@@ -36,7 +36,6 @@ import com.anprosit.android.promise.Promise;
 import com.anprosit.android.promise.Task;
 
 import java.nio.ByteBuffer;
-import java.text.SimpleDateFormat;
 
 import jp.yuta.kohashi.Zooom.R;
 import jp.yuta.kohashi.Zooom.object.ShotApplication;
@@ -46,24 +45,25 @@ public class MainService extends Service {
 
     public static int ID_NOTIFICATION = 2016;
 
+    private static final int VIEW_SIZE = 200;
+    private static final int PX = 70;
+
     //*******************
     //サービス内で共有する
     static Bitmap shareBitmap = null;
     //*******************
 
-    private LinearLayout mFloatLayout;
+    private RelativeLayout mFloatLayout;
     private WindowManager.LayoutParams wmParams = null;
     WindowManager.LayoutParams params;
     private WindowManager mWindowManager;
     private LayoutInflater inflater;
     private ImageView imageView;
+    private ImageButton imageButton;
+    private SeekBar seekbar;
+    private int mSeekBarProgress;
 
     private static final String TAG = "MainActivity";
-
-    private SimpleDateFormat dateFormat;
-    private String strDate;
-    private String pathImage;
-    private String nameImage;
 
     private MediaProjection mMediaProjection;
     private VirtualDisplay mVirtualDisplay;
@@ -87,37 +87,26 @@ public class MainService extends Service {
     private float downY;
     private float upY;
 
+    /*********************************/
+     private int initialX;
+     private int initialY;
+     private float initialTouchX;
+     private float initialTouchY;
+    /*********************************/
     @Override
     public void onCreate() {
         super.onCreate();
         Log.d("メインサービス","onCreate");
         createFloatView();
-//        createFloatView();
-
-//        createVirtualEnvironment();
-//        startVirtualDispCapture();
-
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         int i = super.onStartCommand(intent, flags, startId);
 
-
         Log.d("メインサービス","onStartCommand");
         createVirtualEnvironment();
-        startVirtualDispCapture();
-
-        if(shareBitmap != null){
-            int  px = (int)convertDp2Px(50,getApplicationContext());
-            int fixPx = (int)convertDp2Px(100,getApplicationContext());
-            Bitmap temp = Bitmap.createBitmap(shareBitmap, params.x + fixPx -px/2, params.y + fixPx -px/2, px, px, null, true);
-            imageView.setImageBitmap(temp);
-        }
-
-
         return i;
-
     }
 
     @Override
@@ -127,17 +116,16 @@ public class MainService extends Service {
 
     private void createFloatView() {
 
-
         inflater = LayoutInflater.from(getApplication());
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        mFloatLayout = (LinearLayout) inflater.inflate(R.layout.float_layout, null);
+        mFloatLayout = (RelativeLayout) inflater.inflate(R.layout.float_layout, null);
         imageView = (ImageView) mFloatLayout.findViewById(R.id.float_id);
-//        imageView.setBackgroundResource(R.drawable.image_view_border);
 
-
-
-//        imageView.setImageResource(R.mipmap.ic_launcher);
-        imageView.setImageBitmap(shareBitmap);
+        imageButton=(ImageButton)mFloatLayout.findViewById(R.id.button_image_update);
+        seekbar = (SeekBar)mFloatLayout.findViewById(R.id.seekBar);
+        seekbar.setMax(VIEW_SIZE);
+        seekbar.setProgress(VIEW_SIZE);
+        mSeekBarProgress = VIEW_SIZE;
 
         mFloatLayout.measure(View.MeasureSpec.makeMeasureSpec(0,
                 View.MeasureSpec.UNSPECIFIED), View.MeasureSpec
@@ -152,20 +140,13 @@ public class MainService extends Service {
 
         //View設置時の座標を指定
         params.gravity = Gravity.TOP | Gravity.LEFT;
-        params.x = 200;
-        params.y = 200;
+        params.x = VIEW_SIZE;
+        params.y = VIEW_SIZE;
 
         mWindowManager.addView(mFloatLayout, params);
 
         mFloatLayout.setOnTouchListener(new View.OnTouchListener() {
             private WindowManager.LayoutParams paramsF = params;
-            private int initialX;
-            private int initialY;
-            private int initialX1;
-            private int initialY1;
-            private float initialTouchX;
-            private float initialTouchY;
-
             private float initialTouchX1;
             private float initialTouchY1;
 
@@ -203,8 +184,6 @@ public class MainService extends Service {
                         break;
                     case MotionEvent.ACTION_UP:
 
-                        initialX1 = paramsF.x;
-                        initialY1 = paramsF.y;
                         initialTouchX1 = event.getRawX();
                         initialTouchY1 = event.getRawY();
 
@@ -215,54 +194,6 @@ public class MainService extends Service {
 
                         if (downX == upX && downY == upY) {
 
-                            startVirtualDispCapture();
-
-//                            mFloatLayout.setVisibility(View.INVISIBLE);
-//                            new AsyncTask<Void, Void, Void>() {
-//                                @Override
-//                                protected Void doInBackground(Void... voids) {
-//                                    try {
-//                                        Thread.sleep(1600);
-//
-//                                    } catch (InterruptedException e) {
-//                                        e.printStackTrace();
-//                                    }
-//                                    return null;
-//                                }
-//
-//                                @Override
-//                                protected void onPostExecute(Void aVoid) {
-//                                    super.onPostExecute(aVoid);
-//                                    mFloatLayout.setVisibility(View.VISIBLE);
-//                                }
-//                            };
-//
-//
-////                            Handler handler1 = new Handler();
-////                            handler1.postDelayed(new Runnable() {
-////                                public void run() {
-////                                    //start virtual
-////
-////                                }
-////                            }, 500);
-////
-////                            Handler handler2 = new Handler();
-////                            handler2.postDelayed(new Runnable() {
-////                                public void run() {
-////                                    //capture the screen
-////                                    startCapture();
-////                                }
-////                            }, 1500);
-////
-////
-////
-////                            Handler handler3 = new Handler();
-////                            handler3.postDelayed(new Runnable() {
-////                                public void run() {
-////                                    mFloatLayout.setVisibility(View.VISIBLE);
-////                                    //stopVirtual();
-////                                }
-////                            }, 1000);
                         }
                         break;
                     case MotionEvent.ACTION_MOVE:
@@ -282,22 +213,11 @@ public class MainService extends Service {
                              * 6.
                              * 7.
                              */
-                            int  px = (int)convertDp2Px(50,getApplicationContext());
-                            int fixPx = (int)convertDp2Px(100,getApplicationContext());
+//                            int  px = (int)convertDp2Px(PX,getApplicationContext());
+                            int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+                            int fixPx = (int)convertDp2Px(VIEW_SIZE / 2,getApplicationContext());
 
-//                            px =200;
-//                            fixPx = 100;
-                            //imageViewに高さ幅それぞれ200dpでしている場合引数
-
-
-                            Log.d("座標shareBitmapHeight：：：",String.valueOf(shareBitmap.getHeight()));
-                            Log.d("座標shareBitmapWidth：：：",String.valueOf( shareBitmap.getWidth()));
                             Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
-                            Log.d("座標paramx：：：",String.valueOf(paramsF.x));
-                            Log.d("座標paramy：：：",String.valueOf(paramsF.y));
-                            Log.d("座標fixpx：：：",String.valueOf(fixPx));
-                            Log.d("座標px：：：",String.valueOf(px));
-
                             imageView.setImageBitmap(temp);
 
                         } catch (Exception e) {
@@ -310,49 +230,53 @@ public class MainService extends Service {
             }
         });
 
-//        mFloatLayout.setOnClickListener(new OnClickListener() {
-//
-//            @Override
-//            public void onClick(View v) {
-//                // hide the button
-//                mFloatView.setVisibility(View.INVISIBLE);
-//
-//                Handler handler1 = new Handler();
-//                handler1.postDelayed(new Runnable() {
-//                    public void run() {
-//                        //start virtual
-//                        startVirtual();
-//                    }
-//                }, 500);
-//
-//                Handler handler2 = new Handler();
-//                handler2.postDelayed(new Runnable() {
-//                    public void run() {
-//                        //capture the screen
-//                        startCapture();
-//                    }
-//                }, 1500);
-//
-//
-//
-//                Handler handler3 = new Handler();
-//                handler3.postDelayed(new Runnable() {
-//                    public void run() {
-//                        mFloatView.setVisibility(View.VISIBLE);
-//                        //stopVirtual();
-//                    }
-//                }, 1000);
-//            }
-//        });
 
+
+        //更新ボタンのClickイベント
+        imageButton.setOnClickListener(new View.OnClickListener() {
+            private WindowManager.LayoutParams paramsF = params;
+            @Override
+            public void onClick(View view) {
+                //スクリーンショットを取る
+                int x = (int)paramsF.x;
+                int y = (int)paramsF.y;
+                startVirtualDispCapture(x,y);
+
+            }
+        });
+
+
+        seekbar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            private WindowManager.LayoutParams paramsF = params;
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+
+                if(i == 0){
+                    i = i + 1;
+                }
+
+                mSeekBarProgress = i;
+                int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+                int fixPx = (int)convertDp2Px(VIEW_SIZE / 2,getApplicationContext());
+
+                Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
+                imageView.setImageBitmap(temp);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
         Log.i(TAG, "created the float sphere view");
     }
 
     private void createVirtualEnvironment() {
-        dateFormat = new SimpleDateFormat("yyyy_MM_dd_hh_mm_ss");
-        strDate = dateFormat.format(new java.util.Date());
-        pathImage = Environment.getExternalStorageDirectory().getPath() + "/Pictures/";
-        nameImage = pathImage + strDate + ".png";
         mMediaProjectionManager1 = (MediaProjectionManager) getApplication().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         mWindowManager1 = (WindowManager) getApplication().getSystemService(Context.WINDOW_SERVICE);
         windowWidth = mWindowManager1.getDefaultDisplay().getWidth();
@@ -365,7 +289,6 @@ public class MainService extends Service {
         Log.i(TAG, "prepared the virtual environment");
     }
 
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     public void startVirtual() {
         if (mMediaProjection != null) {
             Log.i(TAG, "want to display virtual");
@@ -378,7 +301,6 @@ public class MainService extends Service {
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     public void setUpMediaProjection() {
         mResultData = ((ShotApplication) getApplication()).getIntent();
         mResultCode = ((ShotApplication) getApplication()).getResult();
@@ -387,7 +309,6 @@ public class MainService extends Service {
         Log.i(TAG, "mMediaProjection defined");
     }
 
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void virtualDisplay() {
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("screen-mirror",
                 windowWidth, windowHeight, mScreenDensity, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -395,11 +316,7 @@ public class MainService extends Service {
         Log.i(TAG, "virtual displayed");
     }
 
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void startCapture() {
-        strDate = dateFormat.format(new java.util.Date());
-        nameImage = pathImage + strDate + ".png";
-
         Image image = mImageReader.acquireLatestImage();
 
         int width = image.getWidth();
@@ -414,39 +331,11 @@ public class MainService extends Service {
         bitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height);
 
         shareBitmap = bitmap;
-//        imageView.setImageBitmap(bitmap);
         image.close();
 
-
         Log.i(TAG, "image data captured");
-
-//        if (bitmap != null) {
-//            try {
-//                File fileImage = new File(nameImage);
-//                if (!fileImage.exists()) {
-//                    fileImage.createNewFile();
-//                    Log.i(TAG, "image file created");
-//                }
-//                FileOutputStream out = new FileOutputStream(fileImage);
-//                if (out != null) {
-//                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
-//                    out.flush();
-//                    out.close();
-//                    Intent media = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-//                    Uri contentUri = Uri.fromFile(fileImage);
-//                    media.setData(contentUri);
-//                    this.sendBroadcast(media);
-//                    Log.i(TAG, "screen image saved");
-//                }
-//            } catch (FileNotFoundException e) {
-//                e.printStackTrace();
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        }
     }
 
-    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
     private void tearDownMediaProjection() {
         if (mMediaProjection != null) {
             mMediaProjection.stop();
@@ -501,7 +390,10 @@ public class MainService extends Service {
 
     }
 
-    public void startVirtualDispCapture() {
+    public void startVirtualDispCapture(int x, int y) {
+        final int mXzahyou = x;
+        final int mYzahyou = y;
+
         Promise.with(this, String.class).then(new Task<String, String>() {
             @Override
             public void run(String s, NextTask<String> nextTask) {
@@ -545,15 +437,26 @@ public class MainService extends Service {
             @Override
             public void onSuccess(String s) {
                 mFloatLayout.setVisibility(View.VISIBLE);
+                ImageView imageView = (ImageView)mFloatLayout.findViewById(R.id.float_id);
+
+//                int  px = (int)convertDp2Px(PX,getApplicationContext());
+                int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+                int fixPx = (int)convertDp2Px(VIEW_SIZE/2,getApplicationContext());
+                Bitmap temp2 = null;
+                if(shareBitmap != null){
+                    temp2 = Bitmap.createBitmap(shareBitmap,mXzahyou + fixPx -px/2, mYzahyou + fixPx -px/2, px, px, null, true);
+                }else{
+                    Log.d("シェアビットマップ","NULL");
+                }
+                imageView.setImageBitmap(temp2);
             }
 
             @Override
             public void onFailure(Bundle bundle, Exception e) {
                 mFloatLayout.setVisibility(View.VISIBLE);
             }
+
         }).create().execute(null);
-
-
     }
 
     /**
