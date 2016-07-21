@@ -104,8 +104,30 @@ public class MainService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         int i = super.onStartCommand(intent, flags, startId);
 
+       WindowManager.LayoutParams paramsF = params;
+
+        if(shareBitmap != null){
+            ImageView imageView = (ImageView)mFloatLayout.findViewById(R.id.float_id);
+
+            try{
+                int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+                int fixPx = (int)convertDp2Px(VIEW_SIZE/2,getApplicationContext());
+                Bitmap temp2 = null;
+                if(shareBitmap != null){
+                    temp2 = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
+                }else{
+                    Log.d("シェアビットマップ","NULL");
+                }
+                imageView.setImageBitmap(temp2);
+            }catch (IllegalArgumentException e){
+
+            }
+            return i;
+        }
+
         Log.d("メインサービス","onStartCommand");
         createVirtualEnvironment();
+
         return i;
     }
 
@@ -125,7 +147,9 @@ public class MainService extends Service {
         seekbar = (SeekBar)mFloatLayout.findViewById(R.id.seekBar);
         seekbar.setMax(VIEW_SIZE);
         seekbar.setProgress(VIEW_SIZE);
-        mSeekBarProgress = VIEW_SIZE;
+        seekbar.setProgress(1);
+//        mSeekBarProgress = VIEW_SIZE;
+        mSeekBarProgress = VIEW_SIZE - 1;
 
         mFloatLayout.measure(View.MeasureSpec.makeMeasureSpec(0,
                 View.MeasureSpec.UNSPECIFIED), View.MeasureSpec
@@ -160,7 +184,7 @@ public class MainService extends Service {
                         // ダブルクリックの時
                         if (pressTime - lastPressTime <= 300) {
                             //Notificationを表示
-                            createNotification(getApplication(), "クリックして虫眼鏡を表示する", "", "クリックして虫眼鏡を表示する");
+                            createNotification(getApplication(), "タップして虫眼鏡を表示する", "", "タップして虫眼鏡を表示する");
                             //サービスを停止する
                             MainService.this.stopSelf();
                             mHasDoubleClicked = true;
@@ -200,8 +224,6 @@ public class MainService extends Service {
                         paramsF.x = initialX + (int) (event.getRawX() - initialTouchX);
                         paramsF.y = initialY + (int) (event.getRawY() - initialTouchY);
 
-//                        shareBitmap = Bitmap.createBitmap(shareBitmap,paramsF.x,paramsF.y,200,200,null,true);
-
                         try {
                             //imageViewに画像をセット
                             /**
@@ -223,13 +245,25 @@ public class MainService extends Service {
                         } catch (Exception e) {
 
                         }
-                        mWindowManager.updateViewLayout(mFloatLayout, params);
+                        try{
+                            mWindowManager.updateViewLayout(mFloatLayout, params);
+                        }catch(IllegalArgumentException e){
+                            Log.d("MainServiceウィンドウマネージャ",e.toString());
+                        }
                         break;
                 }
-                return false;
+                return true;
             }
         });
 
+        mFloatLayout.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View view) {
+                stopSelf();
+                Log.d("メインサービス","stopSelf");
+                return true;
+            }
+        });
 
 
         //更新ボタンのClickイベント
@@ -251,27 +285,29 @@ public class MainService extends Service {
             @Override
             public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
 
-                if(i == 0){
-                    i = i + 1;
+                if(i == VIEW_SIZE){
+                    i = VIEW_SIZE - 1;
                 }
 
-                mSeekBarProgress = i;
+                mSeekBarProgress = VIEW_SIZE -i;
                 int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
                 int fixPx = (int)convertDp2Px(VIEW_SIZE / 2,getApplicationContext());
 
-                Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
-                imageView.setImageBitmap(temp);
+                try{
+
+                    Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
+                    imageView.setImageBitmap(temp);
+                }catch(NullPointerException | IllegalArgumentException e){
+                    Log.d("MainActivityビットマップ",e.toString());
+                    onCreate();
+                }
+
             }
 
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
-
+            public void onStartTrackingTouch(SeekBar seekBar) {}
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-
-            }
+            public void onStopTrackingTouch(SeekBar seekBar) {}
         });
         Log.i(TAG, "created the float sphere view");
     }
@@ -360,7 +396,9 @@ public class MainService extends Service {
         if (mFloatLayout != null) {
             mWindowManager.removeView(mFloatLayout);
         }
+        shareBitmap = null;
         tearDownMediaProjection();
+        stopVirtual();
         Log.i(TAG, "application destroy");
     }
 
@@ -380,7 +418,6 @@ public class MainService extends Service {
                         .setContentText(msgText);
 
         mBuilder.setContentIntent(notificIntent);
-        mBuilder.setDefaults(Notification.DEFAULT_SOUND);
         mBuilder.setAutoCancel(true);
         NotificationManager mNotificationManager =
                 (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -388,6 +425,7 @@ public class MainService extends Service {
         // ノティフィケーションを起動する
         mNotificationManager.notify(ID_NOTIFICATION, mBuilder.build());
 
+        stopSelf();
     }
 
     public void startVirtualDispCapture(int x, int y) {
@@ -439,16 +477,21 @@ public class MainService extends Service {
                 mFloatLayout.setVisibility(View.VISIBLE);
                 ImageView imageView = (ImageView)mFloatLayout.findViewById(R.id.float_id);
 
-//                int  px = (int)convertDp2Px(PX,getApplicationContext());
-                int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
-                int fixPx = (int)convertDp2Px(VIEW_SIZE/2,getApplicationContext());
-                Bitmap temp2 = null;
-                if(shareBitmap != null){
-                    temp2 = Bitmap.createBitmap(shareBitmap,mXzahyou + fixPx -px/2, mYzahyou + fixPx -px/2, px, px, null, true);
-                }else{
-                    Log.d("シェアビットマップ","NULL");
+                try{
+                    int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+                    int fixPx = (int)convertDp2Px(VIEW_SIZE/2,getApplicationContext());
+                    Bitmap temp2 = null;
+                    if(shareBitmap != null){
+                        temp2 = Bitmap.createBitmap(shareBitmap,mXzahyou + fixPx -px/2, mYzahyou + fixPx -px/2, px, px, null, true);
+                    }else{
+                        Log.d("シェアビットマップ","NULL");
+                    }
+                    imageView.setImageBitmap(temp2);
+                }catch (IllegalArgumentException e){
+
                 }
-                imageView.setImageBitmap(temp2);
+//                int  px = (int)convertDp2Px(PX,getApplicationContext());
+
             }
 
             @Override

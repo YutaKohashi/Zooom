@@ -4,7 +4,8 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:padding="2dp"
     android:background="@drawable/image_view_border"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    >
 
     <ImageView
         android:id="@+id/float_id"
@@ -14,24 +15,35 @@
         android:gravity="center_horizontal"/>
         <!--android:padding = "5sp"-->
 
-    <jp.yuta.kohashi.Zooom.object.VerticalSeekBar
+    <jp.yuta.kohashi.Zooom.View.VerticalSeekBar
 
+        android:layout_marginRight="15dp"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:id="@+id/seekBar"
-        android:rotation="180"
+
         android:layout_above="@+id/button_image_update"
         android:layout_alignEnd="@+id/float_id" />
 
     <ImageButton
         android:background="@android:color/white"
         android:src="@drawable/ic_cached_black_24dp"
-        android:layout_height="50dp"
-        android:layout_width="50dp"
+        android:layout_height="40dp"
+        android:layout_width="40dp"
 
         android:id="@+id/button_image_update"
         android:layout_alignEnd="@+id/float_id"
         android:layout_alignBottom="@+id/float_id"/>
+
+    <ImageButton
+        android:background="@android:color/white"
+        android:src="@drawable/ic_open_with_black_24dp"
+        android:layout_height="40dp"
+        android:layout_width="40dp"
+
+        android:id="@+id/button_move_view"
+        android:layout_alignTop="@+id/float_id"
+        android:layout_alignStart="@+id/float_id" />
     <!--<SurfaceView-->
         <!--android:id="@+id/SurfaceViewMain"-->
         <!--android:layout_width="200dp"-->

@@ -8,6 +8,9 @@ import android.media.projection.MediaProjectionManager;
  * Created by Yuta on 2016/07/20.
  */
 
+/**
+ * アプリケーションクラスを継承しデータ、オブジェクトを共有する
+ */
 public class ShotApplication extends Application {
     private int result;
     private Intent intent;

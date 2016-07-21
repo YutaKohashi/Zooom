@@ -1,4 +1,4 @@
-package jp.yuta.kohashi.Zooom.object;
+package jp.yuta.kohashi.Zooom.View;
 
 import android.content.Context;
 import android.graphics.Canvas;

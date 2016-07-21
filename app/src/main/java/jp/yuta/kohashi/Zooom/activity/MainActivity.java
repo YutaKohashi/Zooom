@@ -7,6 +7,9 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.Window;
+import android.view.WindowManager;
+
 import jp.yuta.kohashi.Zooom.service.MainService;
 import jp.yuta.kohashi.Zooom.object.ShotApplication;
 
@@ -20,6 +23,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         mMediaProjectionManager = (MediaProjectionManager)getApplication().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         startIntent();
@@ -46,6 +51,7 @@ public class MainActivity extends AppCompatActivity {
         //ダイアログの結果を監視
         if (requestCode == REQUEST_MEDIA_PROJECTION) {
             if (resultCode != Activity.RESULT_OK) {
+                finish();
                 return;
             }else if(data != null && resultCode != 0){
                 Log.i(TAG, "user agree the application to capture screen");
