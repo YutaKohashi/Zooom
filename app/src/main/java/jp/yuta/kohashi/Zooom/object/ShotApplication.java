@@ -16,6 +16,10 @@ public class ShotApplication extends Application {
     private Intent intent;
     private MediaProjectionManager mMediaProjectionManager;
 
+    private int mWidth;
+    private int mHeight;
+    private int mStatusBarHeight;
+
     public int getResult(){
         return result;
     }
@@ -28,6 +32,18 @@ public class ShotApplication extends Application {
         return mMediaProjectionManager;
     }
 
+    public int getHeight(){
+        return mHeight;
+    }
+
+    public int getWidth(){
+        return mWidth;
+    }
+
+    public int getStatusBarHeight(){
+        return mStatusBarHeight;
+    }
+
     public void setResult(int result1){
         this.result = result1;
     }
@@ -38,5 +54,17 @@ public class ShotApplication extends Application {
 
     public void setMediaProjectionManager(MediaProjectionManager mMediaProjectionManager){
         this.mMediaProjectionManager = mMediaProjectionManager;
+    }
+
+    public void setHeight(int height){
+        this.mHeight = height;
+    }
+
+    public void setWidth(int width){
+        this.mWidth  = width;
+    }
+
+    public void setStatusBarHeight(int height){
+        this.mStatusBarHeight  = height;
     }
 }

@@ -1,6 +1,5 @@
 package jp.yuta.kohashi.Zooom.service;
 
-import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -8,13 +7,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.Drawable;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
@@ -25,10 +24,13 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.SeekBar;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import com.anprosit.android.promise.Callback;
 import com.anprosit.android.promise.NextTask;
@@ -40,6 +42,7 @@ import java.nio.ByteBuffer;
 import jp.yuta.kohashi.Zooom.R;
 import jp.yuta.kohashi.Zooom.object.ShotApplication;
 import jp.yuta.kohashi.Zooom.activity.MainActivity;
+import jp.yuta.kohashi.Zooom.util.LongClickRepeatAdapter;
 
 public class MainService extends Service {
 
@@ -56,14 +59,23 @@ public class MainService extends Service {
     private RelativeLayout mFloatLayout;
     private WindowManager.LayoutParams wmParams = null;
     WindowManager.LayoutParams params;
+    WindowManager.LayoutParams sideParams;
+
     private WindowManager mWindowManager;
     private LayoutInflater inflater;
+
     private ImageView imageView;
-    private ImageButton imageButton;
+    private ImageButton mUpdateButton;          //画像アップデートボタン
     private SeekBar seekbar;
     private int mSeekBarProgress;
+    private ImageButton mMoveImageButton;       //レイアウト移動ボタン
+    private TextView mTextView;
+    private ImageButton mZoomInButton;          //ズームインボタン
+    private ImageButton mZoomOutButton;         //ズームアウトボタン
+    private RelativeLayout mImageViewContainer;
 
-    private static final String TAG = "MainActivity";
+
+    private static final String TAG = "メインサービス";
 
     private MediaProjection mMediaProjection;
     private VirtualDisplay mVirtualDisplay;
@@ -71,6 +83,10 @@ public class MainService extends Service {
     public static int mResultCode = 0;
     public static Intent mResultData;
     public static MediaProjectionManager mMediaProjectionManager1;
+
+    public static int mWidth = 0;
+    public static int mHeight = 0;
+    public static int mStatusBarHeight = 0;
 
     long lastPressTime;
     boolean mHasDoubleClicked = false;
@@ -97,6 +113,16 @@ public class MainService extends Service {
     public void onCreate() {
         super.onCreate();
         Log.d("メインサービス","onCreate");
+
+
+        mHeight = ((ShotApplication) getApplication()).getHeight();
+        mWidth = ((ShotApplication) getApplication()).getWidth();
+        mStatusBarHeight = ((ShotApplication) getApplication()).getStatusBarHeight();
+
+        Log.d(TAG,String.valueOf(mHeight) + "高さ");
+        Log.d(TAG,String.valueOf(mWidth)+ "幅");
+        Log.d(TAG,String.valueOf(mStatusBarHeight)+ "ステータスバ高さ");
+
         createFloatView();
     }
 
@@ -105,6 +131,9 @@ public class MainService extends Service {
         int i = super.onStartCommand(intent, flags, startId);
 
        WindowManager.LayoutParams paramsF = params;
+        int  px1 = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+        int fixPx1 = (int)convertDp2Px(VIEW_SIZE/2,getApplicationContext());
+        startVirtualDispCapture( paramsF.x + fixPx1 -px1/2,paramsF.y + fixPx1 -px1/2);
 
         if(shareBitmap != null){
             ImageView imageView = (ImageView)mFloatLayout.findViewById(R.id.float_id);
@@ -137,19 +166,33 @@ public class MainService extends Service {
     }
 
     private void createFloatView() {
+        Log.d("メインサービス", "createFoloatView");
+        final WindowManager mWindowManager;
 
         inflater = LayoutInflater.from(getApplication());
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        mFloatLayout = (RelativeLayout) inflater.inflate(R.layout.float_layout, null);
-        imageView = (ImageView) mFloatLayout.findViewById(R.id.float_id);
+        try{
+            mWindowManager.removeView(mFloatLayout);
+        }catch(Exception e){
 
-        imageButton=(ImageButton)mFloatLayout.findViewById(R.id.button_image_update);
+        }
+        mFloatLayout = (RelativeLayout) inflater.inflate(R.layout.float_layout_right, null);
+
+
+        imageView = (ImageView) mFloatLayout.findViewById(R.id.float_id);
+        mMoveImageButton = (ImageButton) mFloatLayout.findViewById(R.id.button_move_view);
+        mImageViewContainer = (RelativeLayout)mFloatLayout.findViewById(R.id.image_view_container);
+//        mTextView = (TextView)mFloatLayout.findViewById(R.id.text_view);            //タップしてセットアップ
+        mUpdateButton =(ImageButton) mFloatLayout.findViewById(R.id.button_image_update);
+        mZoomInButton = (ImageButton)mFloatLayout.findViewById(R.id.button_zoom_in);
+        mZoomOutButton = (ImageButton)mFloatLayout.findViewById(R.id.button_zoom_out);
+
         seekbar = (SeekBar)mFloatLayout.findViewById(R.id.seekBar);
         seekbar.setMax(VIEW_SIZE);
         seekbar.setProgress(VIEW_SIZE);
         seekbar.setProgress(1);
 //        mSeekBarProgress = VIEW_SIZE;
-        mSeekBarProgress = VIEW_SIZE - 1;
+        mSeekBarProgress = VIEW_SIZE;
 
         mFloatLayout.measure(View.MeasureSpec.makeMeasureSpec(0,
                 View.MeasureSpec.UNSPECIFIED), View.MeasureSpec
@@ -158,18 +201,64 @@ public class MainService extends Service {
         params = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                WindowManager . LayoutParams . TYPE_PHONE ,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
+
+//        sideParams = new WindowManager.LayoutParams(
+//                WindowManager.LayoutParams.WRAP_CONTENT,
+//                WindowManager.LayoutParams.WRAP_CONTENT,
+//                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
+//                WindowManager . LayoutParams . FLAG_NOT_TOUCHABLE ,
+//
+//                PixelFormat.TRANSLUCENT);
+
+
 
         //View設置時の座標を指定
         params.gravity = Gravity.TOP | Gravity.LEFT;
         params.x = VIEW_SIZE;
         params.y = VIEW_SIZE;
 
+//        Button btn = new Button(this);
         mWindowManager.addView(mFloatLayout, params);
+//        mFloatLayout.addView(btn,sideParams);
+//
+//        btn.setOnClickListener(new View.OnClickListener(){
+//
+//            @Override
+//            public void onClick(View view) {
+//                Toast.makeText(getApplicationContext(),"トースト",Toast.LENGTH_SHORT).show();
+//            }
+//        });
 
         mFloatLayout.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                // TODO Auto-generated method stub
+                return false;
+            }
+        });
+        imageView.setOnTouchListener(new View.OnTouchListener(){
+
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                return false;
+            }
+        });
+
+        mImageViewContainer.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                return false;
+            }
+        });
+
+
+
+        // 動かすためのImageButtonのTouchイベント
+        mMoveImageButton.setOnTouchListener(new View.OnTouchListener() {
             private WindowManager.LayoutParams paramsF = params;
             private float initialTouchX1;
             private float initialTouchY1;
@@ -236,14 +325,15 @@ public class MainService extends Service {
                              * 7.
                              */
 //                            int  px = (int)convertDp2Px(PX,getApplicationContext());
-                            int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
-                            int fixPx = (int)convertDp2Px(VIEW_SIZE / 2,getApplicationContext());
-
-                            Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
-                            imageView.setImageBitmap(temp);
+//                            int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+//                            int fixPx = (int)convertDp2Px(VIEW_SIZE / 2,getApplicationContext());
+//
+//                            Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
+//                            imageView.setImageBitmap(temp);
+                            mSeekBarProgressChanged(mSeekBarProgress);
 
                         } catch (Exception e) {
-
+                            Log.d("メインサービス","画像セット時のエラー");
                         }
                         try{
                             mWindowManager.updateViewLayout(mFloatLayout, params);
@@ -256,21 +346,41 @@ public class MainService extends Service {
             }
         });
 
-        mFloatLayout.setOnLongClickListener(new View.OnLongClickListener() {
+        imageView.setOnTouchListener(new View.OnTouchListener() {
             @Override
-            public boolean onLongClick(View view) {
-                stopSelf();
-                Log.d("メインサービス","stopSelf");
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                switch (motionEvent.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        seekbar.setEnabled(false);
+                        break;
+                    case MotionEvent.ACTION_UP:
+                        seekbar.setEnabled(true );
+                        break;
+                }
                 return true;
             }
         });
 
+//        mFloatLayout.setOnLongClickListener(new View.OnLongClickListener() {
+//            @Override
+//            public boolean onLongClick(View view) {
+//                stopSelf();
+//                Log.d("メインサービス","stopSelf");
+//                return true;
+//            }
+//        });
+
 
         //更新ボタンのClickイベント
-        imageButton.setOnClickListener(new View.OnClickListener() {
+        mUpdateButton.setOnClickListener(new View.OnClickListener() {
             private WindowManager.LayoutParams paramsF = params;
             @Override
             public void onClick(View view) {
+                //MediaProjectionManagerがあるか
+                if(mMediaProjectionManager1 == null || mMediaProjection == null || mVirtualDisplay == null){
+                    Log.d("メインサービス","mMediaProjectionManagerがNULL");
+                    createVirtualEnvironment();
+                }
                 //スクリーンショットを取る
                 int x = (int)paramsF.x;
                 int y = (int)paramsF.y;
@@ -279,36 +389,97 @@ public class MainService extends Service {
             }
         });
 
+        /********************　ズーム　ズームアウト処理　******************************/
+        /***************************************************************************/
 
-        seekbar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            private WindowManager.LayoutParams paramsF = params;
+        //ズームInボタンのクリックイベント
+        mZoomInButton.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+            public void onClick(View view) {
+                mSeekBarProgress-=2;
 
-                if(i == VIEW_SIZE){
-                    i = VIEW_SIZE - 1;
+                if(mSeekBarProgress <= 0){
+                    mSeekBarProgress = 1;
                 }
 
-                mSeekBarProgress = VIEW_SIZE -i;
-                int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
-                int fixPx = (int)convertDp2Px(VIEW_SIZE / 2,getApplicationContext());
-
-                try{
-
-                    Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
-                    imageView.setImageBitmap(temp);
-                }catch(NullPointerException | IllegalArgumentException e){
-                    Log.d("MainActivityビットマップ",e.toString());
-                    onCreate();
-                }
-
+                mSeekBarProgressChanged(mSeekBarProgress);
             }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
         });
+
+        //ズームOutボタンのクリックイベント
+        mZoomOutButton.setOnClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View view) {
+                mSeekBarProgress+=2;
+
+                if(mSeekBarProgress > VIEW_SIZE){
+                    mSeekBarProgress = VIEW_SIZE;
+                }
+
+                mSeekBarProgressChanged(mSeekBarProgress);
+            }
+        });
+
+        LongClickRepeatAdapter.bless(5,mZoomInButton);
+        LongClickRepeatAdapter.bless(5,mZoomOutButton);
+
+
+
+        /***************************************************************************/
+
+//        seekbar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+//            private WindowManager.LayoutParams paramsF = params;
+//            @Override
+//            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+//
+//                if(i == VIEW_SIZE){
+//                    i = VIEW_SIZE - 1;
+//                }
+//
+//                mSeekBarProgress = VIEW_SIZE -i;
+//                int  px = (int)convertDp2Px(mSeekBarProgress,getApplicationContext());
+//                int fixPx = (int)convertDp2Px(VIEW_SIZE / 2,getApplicationContext());
+//
+//                try{
+//
+//                    Bitmap temp = Bitmap.createBitmap(shareBitmap, paramsF.x + fixPx -px/2, paramsF.y + fixPx -px/2, px, px, null, true);
+//                    imageView.setImageBitmap(temp);
+//                }catch(NullPointerException | IllegalArgumentException e){
+//                    //画像が存在しない時にここでNullPointerExceptionが発生する
+//                    //java.lang.NullPointerException: Attempt to invoke virtual method 'int android.graphics.Bitmap.getWidth()' on a null object reference
+//                    Log.d("メインサービス","MainActivityビットマップ" + e.toString());
+//                    onCreate();
+//                }
+//
+//            }
+//
+//            @Override
+//            public void onStartTrackingTouch(SeekBar seekBar) {}
+//            @Override
+//            public void onStopTrackingTouch(SeekBar seekBar) {}
+//        });
+
+        //タップしてセットアップ
+//        mTextView.setOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View view) {
+//                //タップしてセットアップが表示されている場合
+//                //imageviewに画像が設定されていないということになる
+//                Toast.makeText(getApplicationContext(),"タップして",Toast.LENGTH_SHORT).show();
+//
+//            }
+//        });
+        imageView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Log.d("f","imageViewタッチ");
+                Drawable drawable = imageView.getDrawable();
+                if(drawable == null){
+                    Toast.makeText(getApplicationContext(),"タップして",Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
         Log.i(TAG, "created the float sphere view");
     }
 
@@ -341,6 +512,8 @@ public class MainService extends Service {
         mResultData = ((ShotApplication) getApplication()).getIntent();
         mResultCode = ((ShotApplication) getApplication()).getResult();
         mMediaProjectionManager1 = ((ShotApplication) getApplication()).getMediaProjectionManager();
+
+
         mMediaProjection = mMediaProjectionManager1.getMediaProjection(mResultCode, mResultData);
         Log.i(TAG, "mMediaProjection defined");
     }
@@ -349,6 +522,7 @@ public class MainService extends Service {
         mVirtualDisplay = mMediaProjection.createVirtualDisplay("screen-mirror",
                 windowWidth, windowHeight, mScreenDensity, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 mImageReader.getSurface(), null, null);
+        //一回目で通る
         Log.i(TAG, "virtual displayed");
     }
 
@@ -362,13 +536,19 @@ public class MainService extends Service {
         int pixelStride = planes[0].getPixelStride();
         int rowStride = planes[0].getRowStride();
         int rowPadding = rowStride - pixelStride * width;
+        Log.d(TAG,"mHeight" + String.valueOf(mHeight) + " height:" + String.valueOf(height));
         Bitmap bitmap = Bitmap.createBitmap(width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888);
         bitmap.copyPixelsFromBuffer(buffer);
-        bitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height);
+//        bitmap = Bitmap.createBitmap(bitmap, 0, 0, width, height);
+
+        //ツールバーとナビゲーションバーを切り取る
+
+        bitmap = Bitmap.createBitmap(bitmap,0,0,width,height);
+
 
         shareBitmap = bitmap;
         image.close();
-
+//        buffer.clear();
         Log.i(TAG, "image data captured");
     }
 
@@ -391,6 +571,7 @@ public class MainService extends Service {
 
     @Override
     public void onDestroy() {
+        mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         // to remove mFloatLayout from windowManager
         super.onDestroy();
         if (mFloatLayout != null) {
@@ -462,6 +643,19 @@ public class MainService extends Service {
 
             }
 
+        }).thenOnAsyncThread(new Task<String, String>() {
+            @Override
+            public void run(String result, NextTask<String> nextTask) {
+
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                nextTask.run(null);
+
+            }
+
         }).thenOnMainThread(new Task<String, String>() {
             @Override
             public void run(String result, NextTask<String> nextTask) {
@@ -516,5 +710,47 @@ public class MainService extends Service {
     public static float convertDp2Px(float dp, Context context){
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
         return dp * metrics.density;
+    }
+
+
+    private void mSeekBarProgressChanged(int progress) {
+        WindowManager.LayoutParams paramsF = params;
+
+//            mSeekBarProgress = VIEW_SIZE -progress;
+        int px = (int) convertDp2Px(progress, getApplicationContext());
+        int fixPx = (int) convertDp2Px(VIEW_SIZE / 2, getApplicationContext());
+
+        int fPx = paramsF.x + fixPx - px / 2;
+        int fPy = paramsF.y + fixPx - px / 2;
+
+        //左、上の補正
+        if (fPx < 0) {
+            fPx = 0;
+        }
+        if (fPy < 0) {
+            fPy = 0;
+        }
+
+        //右、下の補正
+        if (fPx + px > shareBitmap.getWidth()) {
+            fPx = shareBitmap.getWidth() - px;
+        }
+        if (fPy + px > shareBitmap.getHeight()) {
+            fPy = shareBitmap.getHeight() - px;
+        }
+
+        try {
+
+            Bitmap temp = Bitmap.createBitmap(shareBitmap, fPx, fPy, px, px, null, true);
+            imageView.setImageBitmap(temp);
+            Log.d("メインサービス", "MainActivityビットマップ" + "Bitmap.createBitmap(shareBitmap, " + String.valueOf(paramsF.x + fixPx - px / 2) + ", " + String.valueOf(paramsF.y + fixPx - px / 2) + ", " + String.valueOf(px) + ", " + String.valueOf(px) + ", null, true);");
+        } catch (NullPointerException | IllegalArgumentException e) {
+            //画像が存在しない時にここでNullPointerExceptionが発生する
+            //java.lang.NullPointerException: Attempt to invoke virtual method 'int android.graphics.Bitmap.getWidth()' on a null object reference
+            Log.d("メインサービス", "MainActivityビットマップ694" + e.toString());
+
+            Log.d("メインサービス", "MainActivityビットマップERROR" + "Bitmap.createBitmap(shareBitmap, " + String.valueOf(paramsF.x + fixPx - px / 2) + ", " + String.valueOf(paramsF.y + fixPx - px / 2) + ", " + String.valueOf(px) + ", " + String.valueOf(px) + ", null, true);");
+            onCreate();
+        }
     }
 }
